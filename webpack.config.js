@@ -4,7 +4,7 @@ module.exports = (env, argv) => {
   const isProduction = argv.mode === 'production';
   
   return {
-    entry: './src/sdk/FileUploader.js',
+    entry: './src/sdk/FileUploader.ts',
     output: {
       path: path.resolve(__dirname, 'dist'),
       filename: 'bundle.js',
@@ -17,19 +17,21 @@ module.exports = (env, argv) => {
     module: {
       rules: [
         {
-          test: /\.js$/,
+          test: /\.(ts|tsx)$/,
           exclude: /node_modules/,
           use: {
-            loader: 'babel-loader',
+            loader: 'ts-loader',
             options: {
-              presets: ['@babel/preset-env']
+              compilerOptions: {
+                "declaration": false
+              }
             }
           }
         }
       ]
     },
     resolve: {
-      extensions: ['.js'],
+      extensions: ['.ts', '.js'],
       fallback: {
         "crypto": false
       }

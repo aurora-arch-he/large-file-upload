@@ -6,6 +6,11 @@
 一个支持分片上传、断点续传和秒传功能的 JavaScript SDK。
 A JavaScript SDK that supports chunked upload, resumable upload, and instant transfer.
 
+## 环境要求 / Requirements
+
+- Node.js >= 18+
+- 支持现代浏览器（Chrome, Firefox, Safari, Edge）
+
 ## 功能特性 / Features
 
 1. **分片上传** - 将大文件分割成小块分别上传，提高上传稳定性

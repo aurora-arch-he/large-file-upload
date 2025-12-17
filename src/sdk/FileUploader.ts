@@ -3,7 +3,60 @@
  * Supports chunked upload, resumable upload, and instant transfer / 支持分片上传、断点续传和秒传
  */
 
+// 定义类型接口
+interface FileUploaderOptions {
+  checkEndpoint: string;
+  chunkEndpoint: string;
+  mergeEndpoint: string;
+  chunkSize?: number;
+  concurrentFiles?: number;
+  concurrentChunks?: number;
+  maxRetries?: number;
+}
+
+interface FileItem {
+  id: string;
+  file: File;
+  status: 'pending' | 'checking' | 'uploading' | 'merging' | 'success' | 'error' | 'cancelled';
+  progress: number;
+  name: string;
+  size: number;
+  uploadedChunks: number[];
+  totalChunks: number;
+  md5?: string;
+  error?: string;
+}
+
+interface CheckFileResponse {
+  exists: boolean;
+  path?: string;
+  uploadedChunks: number[];
+}
+
+interface MergeFileResponse {
+  success: boolean;
+  path?: string;
+}
+
 class FileUploader {
+  // API endpoints (required) / API端点（必需）
+  private checkEndpoint: string;
+  private chunkEndpoint: string;
+  private mergeEndpoint: string;
+  
+  // Upload configuration / 上传配置
+  private chunkSize: number;
+  private concurrentFiles: number;
+  private concurrentChunks: number;
+  private maxRetries: number;
+  
+  private uploadQueue: FileItem[];
+  private uploadingCount: number;
+  private files: FileItem[];
+  
+  // 存储正在进行的请求控制器，用于取消上传
+  private abortControllers: Map<string, AbortController>;
+
   /**
    * Create a FileUploader instance / 创建一个FileUploader实例
    * @param {Object} options - Configuration options / 配置选项
@@ -15,7 +68,7 @@ class FileUploader {
    * @param {number} options.concurrentChunks - Max concurrent chunk uploads per file (default: 3) / 每个文件的最大并发分片上传数（默认：3）
    * @param {number} options.maxRetries - Max retry attempts for failed uploads (default: 3) / 上传失败的最大重试次数（默认：3）
    */
-  constructor(options = {}) {
+  constructor(options: FileUploaderOptions) {
     // API endpoints (required) / API端点（必需）
     this.checkEndpoint = options.checkEndpoint;
     this.chunkEndpoint = options.chunkEndpoint;
@@ -44,8 +97,8 @@ class FileUploader {
    * Add files to upload queue / 将文件添加到上传队列
    * @param {FileList|File[]} fileList - Files to upload / 要上传的文件
    */
-  addFiles(fileList) {
-    const newFiles = Array.from(fileList).map((file) => ({
+  addFiles(fileList: FileList | File[]): FileItem[] {
+    const newFiles: FileItem[] = Array.from(fileList).map((file) => ({
       id: this.generateId(),
       file,
       status: 'pending', // pending, checking, uploading, merging, success, error, cancelled
@@ -68,7 +121,7 @@ class FileUploader {
    * Cancel file upload / 取消文件上传
    * @param {string} fileId - ID of the file to cancel / 要取消的文件ID
    */
-  cancelUpload(fileId) {
+  cancelUpload(fileId: string): void {
     const fileItem = this.files.find(item => item.id === fileId);
     if (!fileItem) {
       console.warn(`File with ID ${fileId} not found`);
@@ -101,12 +154,15 @@ class FileUploader {
   /**
    * Process upload queue / 处理上传队列
    */
-  processQueue() {
+  private processQueue(): void {
     while (this.uploadQueue.length > 0 && this.uploadingCount < this.concurrentFiles) {
       const fileItem = this.uploadQueue.shift();
       if (fileItem) {
         this.uploadingCount++;
-        this.processFile(fileItem).finally(() => {
+        this.processFile(fileItem).then(() => {
+          this.uploadingCount--;
+          this.processQueue();
+        }).catch(() => {
           this.uploadingCount--;
           this.processQueue();
         });
@@ -118,7 +174,7 @@ class FileUploader {
    * Process individual file / 处理单个文件
    * @param {Object} fileItem - File item to process / 要处理的文件项
    */
-  async processFile(fileItem) {
+  private async processFile(fileItem: FileItem): Promise<void> {
     // 为每个文件创建 AbortController
     const abortController = new AbortController();
     this.abortControllers.set(fileItem.id, abortController);
@@ -132,7 +188,7 @@ class FileUploader {
       fileItem.md5 = md5;
 
       // Check with server if file already exists or has partial uploads / 检查服务器上是否已存在文件或有部分上传
-      const checkResult = await this.checkFile(fileItem.md5, fileItem.file.name, abortController.signal);
+      const checkResult: CheckFileResponse = await this.checkFile(fileItem.md5!, fileItem.file.name, abortController.signal);
 
       if (checkResult.exists) {
         // Instant transfer - file already exists / 秒传 - 文件已存在
@@ -151,7 +207,7 @@ class FileUploader {
 
       if (chunksToUpload.length === 0) {
         // All chunks already uploaded, just merge / 所有分片已上传，只需合并
-        await this.mergeFile(fileItem.md5, fileItem.file.name, fileItem.totalChunks, abortController.signal);
+        await this.mergeFile(fileItem.md5!, fileItem.file.name, fileItem.totalChunks, abortController.signal);
         fileItem.status = 'success';
         fileItem.progress = 100;
         this.updateFileStatus(fileItem);
@@ -173,13 +229,13 @@ class FileUploader {
       fileItem.status = 'merging';
       this.updateFileStatus(fileItem);
       
-      await this.mergeFile(fileItem.md5, fileItem.file.name, fileItem.totalChunks, abortController.signal);
+      await this.mergeFile(fileItem.md5!, fileItem.file.name, fileItem.totalChunks, abortController.signal);
       
       fileItem.status = 'success';
       fileItem.progress = 100;
       this.updateFileStatus(fileItem);
       this.abortControllers.delete(fileItem.id);
-    } catch (error) {
+    } catch (error: any) {
       // 检查是否是由于取消上传导致的错误
       if (error.name === 'AbortError') {
         fileItem.status = 'cancelled';
@@ -200,10 +256,10 @@ class FileUploader {
    * @param {number[]} chunksToUpload - Indices of chunks to upload / 要上传的分片索引
    * @param {AbortSignal} signal - Abort signal for cancellation / 用于取消的信号
    */
-  async uploadChunksWithConcurrency(fileItem, chunksToUpload, signal) {
+  private async uploadChunksWithConcurrency(fileItem: FileItem, chunksToUpload: number[], signal: AbortSignal): Promise<void> {
     let index = 0;
 
-    const uploadChunk = async (chunkIndex) => {
+    const uploadChunk = async (chunkIndex: number): Promise<void> => {
       // 检查是否已经取消
       if (signal.aborted) {
         throw new DOMException('Aborted', 'AbortError');
@@ -215,7 +271,7 @@ class FileUploader {
 
       const formData = new FormData();
       formData.append('file', chunk);
-      formData.append('md5', fileItem.md5);
+      formData.append('md5', fileItem.md5!);
       formData.append('chunkIndex', chunkIndex.toString());
       formData.append('totalChunks', fileItem.totalChunks.toString());
 
@@ -257,7 +313,7 @@ class FileUploader {
    * @param {AbortSignal} signal - Abort signal for cancellation / 用于取消的信号
    * @returns {Promise<Object>} - Server response / 服务器响应
    */
-  async checkFile(md5, filename, signal) {
+  private async checkFile(md5: string, filename: string, signal: AbortSignal): Promise<CheckFileResponse> {
     const response = await fetch(this.checkEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -280,7 +336,7 @@ class FileUploader {
    * @param {AbortSignal} signal - Abort signal for cancellation / 用于取消的信号
    * @returns {Promise<Object>} - Server response / 服务器响应
    */
-  async mergeFile(md5, filename, totalChunks, signal) {
+  private async mergeFile(md5: string, filename: string, totalChunks: number, signal: AbortSignal): Promise<MergeFileResponse> {
     const response = await fetch(this.mergeEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -302,8 +358,8 @@ class FileUploader {
    * @param {AbortSignal} signal - Abort signal for cancellation / 用于取消的信号
    * @returns {Promise<any>} - Result of function execution / 函数执行结果
    */
-  async uploadWithRetry(fn, maxRetries, signal) {
-    let lastError;
+  private async uploadWithRetry(fn: (signal: AbortSignal) => Promise<Response>, maxRetries: number, signal: AbortSignal): Promise<Response> {
+    let lastError: any;
 
     for (let i = 0; i <= maxRetries; i++) {
       // 检查是否已经取消
@@ -318,7 +374,7 @@ class FileUploader {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
         return response;
-      } catch (error) {
+      } catch (error: any) {
         // 如果是取消操作导致的错误，立即抛出
         if (error.name === 'AbortError') {
           throw error;
@@ -342,7 +398,7 @@ class FileUploader {
    * @param {File} file - File to calculate MD5 for / 要计算MD5的文件
    * @returns {Promise<string>} - MD5 hash / MD5哈希值
    */
-  async calculateMD5(file) {
+  private async calculateMD5(file: File): Promise<string> {
     // Check if Web Workers are supported / 检查是否支持Web Workers
     if (typeof Worker !== 'undefined') {
       return new Promise((resolve, reject) => {
@@ -453,7 +509,7 @@ class FileUploader {
    * @param {File} file - File to calculate MD5 for / 要计算MD5的文件
    * @returns {Promise<string>} - MD5 hash / MD5哈希值
    */
-  async calculateMD5Fallback(file) {
+  private async calculateMD5Fallback(file: File): Promise<string> {
     // Simulate MD5 calculation on main thread / 在主线程中模拟MD5计算
     return new Promise((resolve) => {
       // Simulate calculation time / 模拟计算时间
@@ -468,7 +524,7 @@ class FileUploader {
    * Generate unique ID / 生成唯一ID
    * @returns {string} - Unique ID / 唯一ID
    */
-  generateId() {
+  private generateId(): string {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
   }
 
@@ -477,7 +533,7 @@ class FileUploader {
    * Override this method to handle UI updates / 重写此方法以处理UI更新
    * @param {Object} fileItem - Updated file item / 更新的文件项
    */
-  updateFileStatus(fileItem) {
+  updateFileStatus(fileItem: FileItem): void {
     // This method should be overridden by the user / 此方法应由用户重写
     console.log(`File ${fileItem.name}: ${fileItem.status} (${fileItem.progress}%)`);
   }
@@ -486,14 +542,14 @@ class FileUploader {
    * Get current files / 获取当前文件
    * @returns {Array} - Current files / 当前文件
    */
-  getFiles() {
+  getFiles(): FileItem[] {
     return this.files;
   }
   
   /**
    * Clean up resources / 清理资源
    */
-  destroy() {
+  destroy(): void {
     // 取消所有正在进行的上传
     for (const [fileId, controller] of this.abortControllers.entries()) {
       controller.abort();
@@ -504,14 +560,4 @@ class FileUploader {
   }
 }
 
-// Export for both CommonJS and AMD / 为CommonJS和AMD导出
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = FileUploader;
-} else if (typeof define === 'function' && define.amd) {
-  define(function() {
-    return FileUploader;
-  });
-} else {
-  // Export to global scope / 导出到全局作用域
-  window.FileUploader = FileUploader;
-}
+export default FileUploader;

@@ -1,16 +1,20 @@
 {
   "name": "large-file-upload-sdk",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A SDK for large file upload with chunking, resumable uploads and instant transfer",
   "main": "dist/bundle.js",
-  "module": "src/sdk/FileUploader.js",
+  "module": "dist/bundle.js",
   "browser": "dist/bundle.js",
+  "types": "dist/types/sdk/FileUploader.d.ts",
   "files": [
     "dist/",
     "src/"
   ],
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
-    "build": "webpack --mode production",
+    "build": "tsc -p tsconfig.types.json && webpack --mode production",
     "dev": "webpack serve --mode development",
     "test": "node server/server.js",
     "prepublishOnly": "npm run build"
@@ -35,8 +39,11 @@
   "devDependencies": {
     "@babel/core": "^7.28.5",
     "@babel/preset-env": "^7.28.5",
+    "@types/node": "^18.19.130",
     "babel-loader": "^10.0.0",
     "express": "^4.18.2",
+    "ts-loader": "^9.5.4",
+    "typescript": "^5.9.3",
     "webpack": "^5.89.0",
     "webpack-cli": "^5.1.4",
     "webpack-dev-server": "^4.15.1",
