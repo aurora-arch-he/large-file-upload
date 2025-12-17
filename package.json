@@ -22,16 +22,16 @@
     "large-file",
     "sdk"
   ],
-  "author": "Developer",
+  "author": "aurora-arch-he",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/large-file-upload-sdk.git"
+    "url": "https://github.com/aurora-arch-he/large-file-upload.git"
   },
   "bugs": {
-    "url": "https://github.com/your-username/large-file-upload-sdk/issues"
+    "url": "https://github.com/aurora-arch-he/large-file-upload/issues"
   },
-  "homepage": "https://github.com/your-username/large-file-upload-sdk#readme",
+  "homepage": "https://github.com/aurora-arch-he/large-file-upload#readme",
   "devDependencies": {
     "@babel/core": "^7.28.5",
     "@babel/preset-env": "^7.28.5",
