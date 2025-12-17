@@ -6,7 +6,7 @@ const fsSync = require('fs');
 const crypto = require('crypto');
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3001; // 更改默认端口为3001
 
 // 创建必要的目录
 const tempDir = path.join(__dirname, '..', 'temp');

@@ -560,4 +560,20 @@ class FileUploader {
   }
 }
 
+// Export for both CommonJS and AMD / 为CommonJS和AMD导出
+declare const define: any; // 声明define变量以避免TypeScript报错
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = FileUploader;
+} else if (typeof define !== 'undefined' && define.amd) {
+  define(function() {
+    return FileUploader;
+  });
+} else {
+  // Export to global scope / 导出到全局作用域
+  // @ts-ignore
+  window.FileUploader = FileUploader;
+}
+
+// 同时也导出为默认导出，以兼容ES6模块系统
 export default FileUploader;
