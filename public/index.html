@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大文件上传SDK演示</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 20px;
+            cursor: pointer;
+            background-color: white;
+            transition: all 0.3s ease;
+        }
+        
+        .upload-area:hover {
+            border-color: #007cba;
+            background-color: #f9f9f9;
+        }
+        
+        .upload-area.drag-over {
+            border-color: #007cba;
+            background-color: #e3f2fd;
+        }
+        
+        .file-list {
+            margin-top: 20px;
+        }
+        
+        .file-item {
+            border: 1px solid #eee;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 10px;
+            background-color: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .file-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+        
+        .file-name {
+            font-weight: bold;
+            color: #333;
+            flex-grow: 1;
+            margin-right: 10px;
+            word-break: break-all;
+        }
+        
+        .file-status {
+            font-size: 0.9em;
+            padding: 3px 8px;
+            border-radius: 10px;
+            background-color: #f0f0f0;
+            white-space: nowrap;
+        }
+        
+        .file-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+            color: #666;
+        }
+        
+        .progress-container {
+            margin-bottom: 10px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background-color: #4caf50;
+            transition: width 0.3s ease;
+        }
+        
+        .progress-text {
+            text-align: right;
+            font-size: 0.8em;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .status-pending { 
+            background-color: #e0e0e0;
+            color: #666;
+        }
+        .status-checking { 
+            background-color: #fff3e0;
+            color: #f57c00;
+        }
+        .status-uploading { 
+            background-color: #e3f2fd;
+            color: #1976d2;
+        }
+        .status-merging { 
+            background-color: #f3e5f5;
+            color: #7b1fa2;
+        }
+        .status-success { 
+            background-color: #e8f5e9;
+            color: #388e3c;
+        }
+        .status-error { 
+            background-color: #ffebee;
+            color: #d32f2f;
+        }
+        .status-cancelled { 
+            background-color: #eceff1;
+            color: #546e7a;
+        }
+        
+        button {
+            background-color: #007cba;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 5px;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+        
+        button:hover:not(:disabled) {
+            background-color: #005a87;
+        }
+        
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        
+        .select-btn {
+            background-color: #4caf50;
+        }
+        
+        .select-btn:hover:not(:disabled) {
+            background-color: #388e3c;
+        }
+        
+        .cancel-btn {
+            background-color: #f44336;
+        }
+        
+        .cancel-btn:hover:not(:disabled) {
+            background-color: #d32f2f;
+        }
+        
+        .action-buttons {
+            margin-top: 10px;
+            text-align: right;
+        }
+        
+        .error-message {
+            color: #f44336;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        
+        .file-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>大文件上传SDK演示</h1>
+    
+    <div class="upload-area" id="uploadArea">
+        <p>点击选择文件或拖拽文件到此处</p>
+        <input type="file" id="fileInput" multiple style="display: none;">
+        <button class="select-btn" id="selectButton">选择文件</button>
+    </div>
+    
+    <div class="file-list" id="fileList"></div>
+
+    <script src="./dist/bundle.js"></script>
+    <script>
+        // 初始化上传器
+        const uploader = new FileUploader({
+            checkEndpoint: '/api/upload/check',
+            chunkEndpoint: '/api/upload/chunk',
+            mergeEndpoint: '/api/upload/merge',
+            chunkSize: 2 * 1024 * 1024, // 2MB chunks for demo
+            concurrentFiles: 2,
+            concurrentChunks: 3
+        });
+        
+        // 获取DOM元素
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const selectButton = document.getElementById('selectButton');
+        const fileList = document.getElementById('fileList');
+        
+        // 事件监听
+        selectButton.addEventListener('click', () => {
+            fileInput.click();
+        });
+        
+        fileInput.addEventListener('change', (event) => {
+            if (event.target.files.length > 0) {
+                uploader.addFiles(event.target.files);
+                fileInput.value = ''; // 重置input
+            }
+        });
+        
+        uploadArea.addEventListener('dragover', (event) => {
+            event.preventDefault();
+            uploadArea.classList.add('drag-over');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('drag-over');
+        });
+        
+        uploadArea.addEventListener('drop', (event) => {
+            event.preventDefault();
+            uploadArea.classList.remove('drag-over');
+            
+            if (event.dataTransfer.files.length > 0) {
+                uploader.addFiles(event.dataTransfer.files);
+            }
+        });
+        
+        // 重写状态更新方法以更新UI
+        uploader.updateFileStatus = function(fileItem) {
+            renderFileList();
+        };
+        
+        // 渲染文件列表
+        function renderFileList() {
+            fileList.innerHTML = '';
+            
+            uploader.getFiles().forEach(fileItem => {
+                const fileElement = document.createElement('div');
+                fileElement.className = 'file-item';
+                
+                const statusClass = `status-${fileItem.status}`;
+                
+                // 判断是否可以取消上传 (状态为 pending, checking, uploading 或 merging)
+                const canCancel = ['pending', 'checking', 'uploading', 'merging'].includes(fileItem.status);
+                
+                fileElement.innerHTML = `
+                    <div class="file-header">
+                        <div class="file-name">${fileItem.name}</div>
+                        <div class="file-status ${statusClass}">
+                            ${getStatusText(fileItem.status)}
+                        </div>
+                    </div>
+                    <div class="file-info">
+                        <div class="file-size">${formatFileSize(fileItem.size)}</div>
+                        <div class="file-chunks">${fileItem.totalChunks} 个分片</div>
+                    </div>
+                    <div class="progress-container">
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${fileItem.progress}%"></div>
+                        </div>
+                        <div class="progress-text">${fileItem.progress}%</div>
+                    </div>
+                    ${fileItem.error ? `<div class="error-message">错误: ${fileItem.error}</div>` : ''}
+                    ${canCancel ? `
+                    <div class="action-buttons">
+                        <div class="file-actions">
+                            <button class="cancel-btn" onclick="cancelUpload('${fileItem.id}')">取消上传</button>
+                        </div>
+                    </div>` : ''}
+                `;
+                
+                fileList.appendChild(fileElement);
+            });
+        }
+        
+        // 取消上传函数
+        function cancelUpload(fileId) {
+            if (confirm('确定要取消上传这个文件吗？')) {
+                uploader.cancelUpload(fileId);
+            }
+        }
+        
+        // 获取状态文本
+        function getStatusText(status) {
+            const statusMap = {
+                'pending': '等待中',
+                'checking': '检查中',
+                'uploading': '上传中',
+                'merging': '合并中',
+                'success': '上传成功',
+                'error': '上传失败',
+                'cancelled': '已取消'
+            };
+            return statusMap[status] || status;
+        }
+        
+        // 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        // 页面卸载时清理资源
+        window.addEventListener('beforeunload', () => {
+            uploader.destroy();
+        });
+        
+        // 初始化空列表
+        renderFileList();
+    </script>
+</body>
+</html>
