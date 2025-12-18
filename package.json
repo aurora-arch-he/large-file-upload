@@ -1,7 +1,7 @@
 {
   "name": "large-file-upload-sdk",
-  "version": "1.0.2",
-  "description": "A SDK for large file upload with chunking, resumable uploads and instant transfer",
+  "version": "2.0.0",
+  "description": "A SDK for large file upload with chunking, resumable uploads and instant transfer. Version 2.0 removes endpoint configs and adds customizable functions.",
   "main": "dist/bundle.js",
   "module": "dist/bundle.js",
   "browser": "dist/bundle.js",

@@ -88,10 +88,32 @@ import FileUploader from 'large-file-upload-sdk';
 
 ```javascript
 const uploader = new FileUploader({
-  // 必须配置所有API端点 / Must configure all API endpoints
-  checkEndpoint: '/api/upload/check',   // 检查文件状态接口 / Check file status endpoint
-  chunkEndpoint: '/api/upload/chunk',   // 上传分片接口 / Upload chunk endpoint
-  mergeEndpoint: '/api/upload/merge',   // 合并文件接口 / Merge file endpoint
+  // 必须提供自定义函数 / Custom functions are required
+  checkFileFunction: async (md5, filename) => {
+    // 检查文件状态的自定义实现 / Custom implementation for checking file status
+    const response = await fetch('/api/upload/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ md5, filename })
+    });
+    return response.json();
+  },
+  uploadChunkFunction: async (formData) => {
+    // 上传分片的自定义实现 / Custom implementation for uploading chunk
+    return fetch('/api/upload/chunk', {
+      method: 'POST',
+      body: formData
+    });
+  },
+  mergeFileFunction: async (md5, filename, totalChunks) => {
+    // 合并文件的自定义实现 / Custom implementation for merging file
+    const response = await fetch('/api/upload/merge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ md5, filename, totalChunks })
+    });
+    return response.json();
+  },
   
   // 上传配置（可选） / Upload configuration (optional)
   chunkSize: 2 * 1024 * 1024,          // 分片大小，默认为 2MB / Chunk size, default is 2MB
@@ -99,6 +121,37 @@ const uploader = new FileUploader({
   concurrentChunks: 3,                  // 每个文件最大同时上传分片数，默认为 3 / Max concurrent chunk uploads per file, default is 3
   maxRetries: 3                         // 请求失败最大重试次数，默认为 3 / Max retry attempts for failed requests, default is 3
 });
+```
+
+### FileUploaderOptions 详细说明 / Detailed FileUploaderOptions Description
+
+| 参数名/Parameter | 类型/Type | 是否必需/Required | 描述/Description |
+|-----------------|-----------|------------------|------------------|
+| `checkFileFunction` | `(md5: string, filename: string) => Promise<CheckFileResponse>` | 是/Yes | 用于检查文件状态的函数。接收文件的MD5值和原始文件名，应返回一个Promise，解析为[CheckFileResponse](file://e:/sdk/maxUploadFiles/src/sdk/FileUploader.ts#L44-L48)对象 |
+| `uploadChunkFunction` | `(formData: FormData) => Promise<Response>` | 是/Yes | 用于上传文件分片的函数。接收包含分片数据的FormData对象，应返回一个Promise，解析为fetch Response对象 |
+| `mergeFileFunction` | `(md5: string, filename: string, totalChunks: number) => Promise<MergeFileResponse>` | 是/Yes | 用于通知服务器合并文件分片的函数。接收文件的MD5值、原始文件名和总分片数，应返回一个Promise，解析为[MergeFileResponse](file://e:/sdk/maxUploadFiles/src/sdk/FileUploader.ts#L50-L53)对象 |
+| `chunkSize` | `number` | 否/No | 每个分片的大小（以字节为单位）。默认值为 2MB (2 * 1024 * 1024) |
+| `concurrentFiles` | `number` | 否/No | 最大同时上传的文件数量。默认值为 3 |
+| `concurrentChunks` | `number` | 否/No | 每个文件最大同时上传的分片数量。默认值为 3 |
+| `maxRetries` | `number` | 否/No | 请求失败时的最大重试次数。默认值为 3 |
+
+#### CheckFileResponse Interface
+
+```typescript
+interface CheckFileResponse {
+  exists: boolean;        // 文件是否已存在（用于秒传）
+  path?: string;          // 文件路径（仅当 exists=true 时）
+  uploadedChunks: number[]; // 已上传的分片索引数组（仅当 exists=false 时）
+}
+```
+
+#### MergeFileResponse Interface
+
+```typescript
+interface MergeFileResponse {
+  success: boolean;  // 合并操作是否成功
+  path?: string;     // 合并后的文件路径（仅当 success=true 时）
+}
 ```
 
 ### 添加文件 / Add Files

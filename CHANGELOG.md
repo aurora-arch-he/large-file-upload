@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2025-12-18
+
+### Changed
+
+- Removed checkEndpoint, chunkEndpoint, and mergeEndpoint configuration options
+- Added customizable functions: checkFileFunction, uploadChunkFunction, and mergeFileFunction
+- Made custom functions required (no default implementations)
+- Updated documentation to reflect new API
+- Updated demo application to use new API
+
+### Added
+
+- Support for custom implementation of file checking, chunk uploading, and file merging functions
+
 ## [1.0.0] - 2025-12-17
 
 ### Added

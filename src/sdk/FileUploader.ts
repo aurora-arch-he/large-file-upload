@@ -5,44 +5,175 @@
 
 // 定义类型接口
 interface FileUploaderOptions {
-  checkEndpoint: string;
-  chunkEndpoint: string;
-  mergeEndpoint: string;
+  /**
+   * 每个分片的大小（以字节为单位）
+   * Size of each chunk in bytes
+   * @default 2 * 1024 * 1024 (2MB)
+   */
   chunkSize?: number;
+  
+  /**
+   * 最大同时上传的文件数量
+   * Max concurrent file uploads
+   * @default 3
+   */
   concurrentFiles?: number;
+  
+  /**
+   * 每个文件最大同时上传的分片数量
+   * Max concurrent chunk uploads per file
+   * @default 3
+   */
   concurrentChunks?: number;
+  
+  /**
+   * 请求失败时的最大重试次数
+   * Max retry attempts for failed uploads
+   * @default 3
+   */
   maxRetries?: number;
+  
+  /**
+   * 用于检查文件状态的函数
+   * Function to check file status
+   * @param md5 - 文件的MD5值 / File MD5 hash
+   * @param filename - 原始文件名 / Original filename
+   * @returns Promise<CheckFileResponse> - 服务器响应 / Server response
+   */
+  checkFileFunction: (md5: string, filename: string) => Promise<CheckFileResponse>;
+  
+  /**
+   * 用于上传文件分片的函数
+   * Function to upload chunk
+   * @param formData - 包含分片数据的FormData对象 / Form data containing chunk
+   * @returns Promise<Response> - 服务器响应 / Server response
+   */
+  uploadChunkFunction: (formData: FormData) => Promise<Response>;
+  
+  /**
+   * 用于通知服务器合并文件分片的函数
+   * Function to merge chunks
+   * @param md5 - 文件的MD5值 / File MD5 hash
+   * @param filename - 原始文件名 / Original filename
+   * @param totalChunks - 总分片数 / Total number of chunks
+   * @returns Promise<MergeFileResponse> - 服务器响应 / Server response
+   */
+  mergeFileFunction: (md5: string, filename: string, totalChunks: number) => Promise<MergeFileResponse>;
 }
 
+/**
+ * 文件项接口
+ * File item interface
+ */
 interface FileItem {
+  /**
+   * 文件唯一标识符
+   * Unique identifier for the file
+   */
   id: string;
+  
+  /**
+   * 原始File对象
+   * Original File object
+   */
   file: File;
+  
+  /**
+   * 文件上传状态
+   * File upload status
+   */
   status: 'pending' | 'checking' | 'uploading' | 'merging' | 'success' | 'error' | 'cancelled';
+  
+  /**
+   * 上传进度百分比
+   * Upload progress percentage
+   */
   progress: number;
+  
+  /**
+   * 文件名
+   * File name
+   */
   name: string;
+  
+  /**
+   * 文件大小（字节）
+   * File size in bytes
+   */
   size: number;
+  
+  /**
+   * 已上传的分片索引数组
+   * Array of uploaded chunk indices
+   */
   uploadedChunks: number[];
+  
+  /**
+   * 总分片数
+   * Total number of chunks
+   */
   totalChunks: number;
+  
+  /**
+   * 文件的MD5值
+   * MD5 hash of the file
+   */
   md5?: string;
+  
+  /**
+   * 错误信息（如果有）
+   * Error message (if any)
+   */
   error?: string;
 }
 
+/**
+ * 检查文件响应接口
+ * Check file response interface
+ */
 interface CheckFileResponse {
+  /**
+   * 文件是否已存在（用于秒传）
+   * Whether the file already exists (for instant transfer)
+   */
   exists: boolean;
+  
+  /**
+   * 文件路径（仅当 exists=true 时）
+   * File path (only when exists=true)
+   */
   path?: string;
+  
+  /**
+   * 已上传的分片索引数组（仅当 exists=false 时）
+   * Array of uploaded chunk indices (only when exists=false)
+   */
   uploadedChunks: number[];
 }
 
+/**
+ * 合并文件响应接口
+ * Merge file response interface
+ */
 interface MergeFileResponse {
+  /**
+   * 合并操作是否成功
+   * Whether the merge operation was successful
+   */
   success: boolean;
+  
+  /**
+   * 合并后的文件路径（仅当 success=true 时）
+   * Path of the merged file (only when success=true)
+   */
   path?: string;
 }
 
 class FileUploader {
   // API endpoints (required) / API端点（必需）
-  private checkEndpoint: string;
-  private chunkEndpoint: string;
-  private mergeEndpoint: string;
+  private checkFileFunction: (md5: string, filename: string) => Promise<CheckFileResponse>;
+  private uploadChunkFunction: (formData: FormData) => Promise<Response>;
+  private mergeFileFunction: (md5: string, filename: string, totalChunks: number) => Promise<MergeFileResponse>;
   
   // Upload configuration / 上传配置
   private chunkSize: number;
@@ -60,24 +191,24 @@ class FileUploader {
   /**
    * Create a FileUploader instance / 创建一个FileUploader实例
    * @param {Object} options - Configuration options / 配置选项
-   * @param {string} options.checkEndpoint - API endpoint for checking file status / 检查文件状态的API端点
-   * @param {string} options.chunkEndpoint - API endpoint for uploading chunks / 上传分片的API端点
-   * @param {string} options.mergeEndpoint - API endpoint for merging chunks / 合并分片的API端点
    * @param {number} options.chunkSize - Size of each chunk in bytes (default: 2MB) / 每个分片的大小（默认：2MB）
    * @param {number} options.concurrentFiles - Max concurrent file uploads (default: 3) / 最大并发文件上传数（默认：3）
    * @param {number} options.concurrentChunks - Max concurrent chunk uploads per file (default: 3) / 每个文件的最大并发分片上传数（默认：3）
    * @param {number} options.maxRetries - Max retry attempts for failed uploads (default: 3) / 上传失败的最大重试次数（默认：3）
+   * @param {Function} options.checkFileFunction - Function to check file status (required) / 检查文件状态的函数（必需）
+   * @param {Function} options.uploadChunkFunction - Function to upload chunk (required) / 上传分片的函数（必需）
+   * @param {Function} options.mergeFileFunction - Function to merge chunks (required) / 合并分片的函数（必需）
    */
   constructor(options: FileUploaderOptions) {
-    // API endpoints (required) / API端点（必需）
-    this.checkEndpoint = options.checkEndpoint;
-    this.chunkEndpoint = options.chunkEndpoint;
-    this.mergeEndpoint = options.mergeEndpoint;
-    
-    // Validate required endpoints / 验证必需的端点
-    if (!this.checkEndpoint || !this.chunkEndpoint || !this.mergeEndpoint) {
-      throw new Error('All API endpoints (checkEndpoint, chunkEndpoint, mergeEndpoint) must be provided / 所有API端点（checkEndpoint、chunkEndpoint、mergeEndpoint）都必须提供');
+    // Validate required functions
+    if (!options.checkFileFunction || !options.uploadChunkFunction || !options.mergeFileFunction) {
+      throw new Error('All custom functions (checkFileFunction, uploadChunkFunction, mergeFileFunction) must be provided');
     }
+    
+    // API endpoints (required) / API端点（必需）
+    this.checkFileFunction = options.checkFileFunction;
+    this.uploadChunkFunction = options.uploadChunkFunction;
+    this.mergeFileFunction = options.mergeFileFunction;
     
     // Upload configuration / 上传配置
     this.chunkSize = options.chunkSize || 2 * 1024 * 1024; // 2MB
@@ -188,7 +319,7 @@ class FileUploader {
       fileItem.md5 = md5;
 
       // Check with server if file already exists or has partial uploads / 检查服务器上是否已存在文件或有部分上传
-      const checkResult: CheckFileResponse = await this.checkFile(fileItem.md5!, fileItem.file.name, abortController.signal);
+      const checkResult: CheckFileResponse = await this.checkFileFunction(fileItem.md5!, fileItem.file.name);
 
       if (checkResult.exists) {
         // Instant transfer - file already exists / 秒传 - 文件已存在
@@ -207,7 +338,7 @@ class FileUploader {
 
       if (chunksToUpload.length === 0) {
         // All chunks already uploaded, just merge / 所有分片已上传，只需合并
-        await this.mergeFile(fileItem.md5!, fileItem.file.name, fileItem.totalChunks, abortController.signal);
+        await this.mergeFileFunction(fileItem.md5!, fileItem.file.name, fileItem.totalChunks);
         fileItem.status = 'success';
         fileItem.progress = 100;
         this.updateFileStatus(fileItem);
@@ -229,7 +360,7 @@ class FileUploader {
       fileItem.status = 'merging';
       this.updateFileStatus(fileItem);
       
-      await this.mergeFile(fileItem.md5!, fileItem.file.name, fileItem.totalChunks, abortController.signal);
+      await this.mergeFileFunction(fileItem.md5!, fileItem.file.name, fileItem.totalChunks);
       
       fileItem.status = 'success';
       fileItem.progress = 100;
@@ -275,12 +406,13 @@ class FileUploader {
       formData.append('chunkIndex', chunkIndex.toString());
       formData.append('totalChunks', fileItem.totalChunks.toString());
 
-      await this.uploadWithRetry((signal) => {
-        return fetch(this.chunkEndpoint, {
-          method: 'POST',
-          body: formData,
-          signal: signal
-        });
+      await this.uploadWithRetry(async (signal) => {
+        // Check if the operation was aborted before calling the function
+        if (signal.aborted) {
+          throw new DOMException('Aborted', 'AbortError');
+        }
+        
+        return this.uploadChunkFunction(formData);
       }, this.maxRetries, signal);
 
       // Update progress / 更新进度
@@ -314,18 +446,15 @@ class FileUploader {
    * @returns {Promise<Object>} - Server response / 服务器响应
    */
   private async checkFile(md5: string, filename: string, signal: AbortSignal): Promise<CheckFileResponse> {
-    const response = await fetch(this.checkEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ md5, filename }),
-      signal: signal
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    // Wrap the checkFileFunction to support signal
+    const result = await this.checkFileFunction(md5, filename);
+    
+    // Check if the operation was aborted
+    if (signal.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
     }
-
-    return response.json();
+    
+    return result;
   }
 
   /**
@@ -337,18 +466,15 @@ class FileUploader {
    * @returns {Promise<Object>} - Server response / 服务器响应
    */
   private async mergeFile(md5: string, filename: string, totalChunks: number, signal: AbortSignal): Promise<MergeFileResponse> {
-    const response = await fetch(this.mergeEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ md5, filename, totalChunks }),
-      signal: signal
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    // Wrap the mergeFileFunction to support signal
+    const result = await this.mergeFileFunction(md5, filename, totalChunks);
+    
+    // Check if the operation was aborted
+    if (signal.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
     }
-
-    return response.json();
+    
+    return result;
   }
 
   /**
@@ -558,6 +684,7 @@ class FileUploader {
     this.uploadQueue = [];
     this.files = [];
   }
+
 }
 
 // Export for both CommonJS and AMD / 为CommonJS和AMD导出

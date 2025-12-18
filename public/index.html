@@ -207,9 +207,29 @@
     <script>
         // 初始化上传器
         const uploader = new FileUploader({
-            checkEndpoint: '/api/upload/check',
-            chunkEndpoint: '/api/upload/chunk',
-            mergeEndpoint: '/api/upload/merge',
+            // 自定义函数（必需）/ Custom functions (required)
+            checkFileFunction: async (md5, filename) => {
+                const response = await fetch('/api/upload/check', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ md5, filename })
+                });
+                return response.json();
+            },
+            uploadChunkFunction: async (formData) => {
+                return fetch('/api/upload/chunk', {
+                    method: 'POST',
+                    body: formData
+                });
+            },
+            mergeFileFunction: async (md5, filename, totalChunks) => {
+                const response = await fetch('/api/upload/merge', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ md5, filename, totalChunks })
+                });
+                return response.json();
+            },
             chunkSize: 2 * 1024 * 1024, // 2MB chunks for demo
             concurrentFiles: 2,
             concurrentChunks: 3
