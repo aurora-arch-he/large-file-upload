@@ -14,7 +14,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.types.json && webpack --mode production",
+    "build": "webpack --mode production && tsc -p tsconfig.types.json",
     "dev": "webpack serve --mode development",
     "test": "node server/server.js",
     "prepublishOnly": "npm run build"
